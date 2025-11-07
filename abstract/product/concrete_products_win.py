@@ -132,7 +132,7 @@ class WindownsTkinterUI(Singleton):
         self.__screen_height = 720
 
         self.__root.geometry(f"{self.__screen_width}x{self.__screen_height}+0+0")
-        self.__root.attributes("-fullscreen", True)
+        self.__root.attributes("-fullscreen", False)
         self.__root.config(cursor="none")
         
         # Preload home image

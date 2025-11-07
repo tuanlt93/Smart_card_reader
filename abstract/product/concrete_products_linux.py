@@ -186,7 +186,7 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
             "--aout=alsa",
             "--alsa-audio-device=hw:2,0",
             "--audio-replay-gain-mode=none",
-            "--gain=1.0"
+            "--gain=1.0",
             "--no-xlib",                 # tránh phụ thuộc X11
             "--vout=drm",                # xuất trực tiếp KMS
             "--avcodec-hw=v4l2m2m",      # giải mã HW
