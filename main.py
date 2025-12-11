@@ -10,7 +10,7 @@ from utils.logger import Logger
 POLL_MS = 200
 
 class RFIDVideoApp:
-    def __init__(self, app_components: "AppComponents") -> None:
+    def __init__(self, app_components: AppComponents) -> None:
         # 1) Hạ tầng theo nền tảng
         self.__config            = app_components.create_config()
         self.__home_img_path     = self.__config.home_img()           # Path
@@ -76,7 +76,7 @@ class RFIDVideoApp:
         self.__last_cmd = cmd
 
 
-def choose_factory() -> "AppComponents":
+def choose_factory() -> AppComponents:
     if platform.system() == "Linux":
         return LinuxAppComponents()
     elif platform.system() == "Windows":

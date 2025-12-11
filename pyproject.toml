@@ -1,0 +1,16 @@
+[project]
+name = "abstract-components"
+version = "0.1.0"
+description = "Abstract Factory components for RFID app"
+authors = [
+    {name = "tuanlt93", email = "tuanlt932@email.com"}
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["abstract*", "utils*"]

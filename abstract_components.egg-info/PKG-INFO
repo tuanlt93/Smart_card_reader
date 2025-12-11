@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: abstract-components
+Version: 0.1.0
+Summary: Abstract Factory components for RFID app
+Author-email: tuanlt93 <tuanlt932@email.com>
+Requires-Python: >=3.10
