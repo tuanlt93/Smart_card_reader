@@ -106,6 +106,14 @@ class LinuxSerialPort(Singleton ,SerialPort):
             Logger().error(f"Serial error: {e}")
         return lines
     
+    def send_cmd(self, cmd: str) -> None:
+        if self.is_opened():
+            try:
+                self.__ser.write((cmd + "\n").encode("utf-8"))
+            except (serial.SerialException, OSError) as e:
+                self.close()
+                Logger().error(f"Serial send error: {e}")
+    
     def is_opened(self) -> bool:
         return bool(self.__ser and self.__ser.is_open)
             
