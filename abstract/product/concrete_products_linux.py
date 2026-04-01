@@ -182,22 +182,35 @@ class LinuxTkinterUI(Singleton):
 # ──────────────────────────────────────────────────────────────
 class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
     def __init__(self, home_img_path: Path, uid_map: Dict[str, str], serial_port: SerialPort):
-        # Chọn options theo OS
+        # Options Pi4b +
         self.__opts = [
             "--no-video-title-show",
             "--fullscreen",
-            "--network-caching=500",
-            "--file-caching=500",
+            "--quiet",
+            "--network-caching=1000",
+            "--file-caching=1000",
+            
+            # Đồng bộ hóa cực đoan
             "--drop-late-frames",
             "--skip-frames",
-            "--quiet",
+            
+            # Âm thanh
             "--aout=alsa",
-            "--alsa-audio-device=hw:2.0",
-            "--audio-replay-gain-mode=none",
-            "--gain=1.0",
-            "--no-xlib",                 # tránh phụ thuộc X11
-            "--vout=drm",                # xuất trực tiếp KMS
-            "--avcodec-hw=v4l2m2m",      # giải mã HW
+            "--alsa-audio-device=default",
+            
+            # XUẤT HÌNH TRỰC TIẾP (DRM/KMS)
+            # Bỏ qua hoàn toàn X11 để tránh crash HDMI
+            "--vout=drm", 
+            "--no-xlib",
+            
+            # Giải mã phần cứng
+            "--avcodec-hw=v4l2m2m",
+            
+            # Tối ưu tài nguyên
+            "--no-osd",
+            "--avcodec-skiploopfilter=4",
+            "--no-stats",
+            "--no-mouse-events",
         ] 
 
         super().__init__(home_img_path)
@@ -294,9 +307,8 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         if not media:
             media = self.__vlc.media_new(self.__uid_map[uid])
             # Add media options for performance
-            media.add_option(":avcodec-hw=any")
-            media.add_option(":no-avcodec-dr")
-            media.add_option(":avcodec-skiploopfilter=all")
+            media.add_option(":avcodec-hw=v4l2m2m")
+            media.add_option(":avcodec-skiploopfilter=4")
             self.__media_cache[uid] = media
         return media
     
