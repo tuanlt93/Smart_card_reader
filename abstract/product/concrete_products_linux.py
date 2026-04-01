@@ -192,7 +192,7 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
             "--skip-frames",
             "--quiet",
             "--aout=alsa",
-            "--alsa-audio-device=hw:2,0",
+            "--alsa-audio-device=hw:2.0",
             "--audio-replay-gain-mode=none",
             "--gain=1.0",
             "--no-xlib",                 # tránh phụ thuộc X11
