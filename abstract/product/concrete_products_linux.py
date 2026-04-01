@@ -358,6 +358,7 @@ class LinuxTkinterUI(Singleton):
                     time.sleep(0.5)
             except KeyboardInterrupt:
                 self.__running = False
+                self._safe_shutdown()
 
     def run_loop_after_time(self, poll_time_ms: int, func: Callable) -> str:
         if self.__export_display and self.__root:
@@ -379,7 +380,10 @@ class LinuxTkinterUI(Singleton):
                 self.__root.after_cancel(job)
             except ValueError:
                 pass
-
+    
+    def _safe_shutdown(self, event=None):
+        """Placeholder for shutdown logic - to be overridden by Engine"""
+        pass
 
 # ──────────────────────────────────────────────────────────────
 # Concrete Products - MEDIA (VLC)
@@ -419,8 +423,8 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
 
         # Setup linux close protocol
         if self.__export_display and self.__root_ui:
-            self.__root_ui.bind("<Escape>", lambda e: self.__safe_shutdown())
-            self.__root_ui.protocol("WM_DELETE_WINDOW", self.__safe_shutdown)
+            self.__root_ui.bind("<Escape>", lambda e: self._safe_shutdown())
+            self.__root_ui.protocol("WM_DELETE_WINDOW", self._safe_shutdown)
 
             # Set canvas window ID
             self.__root_ui.update_idletasks()
@@ -547,7 +551,7 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         self.run_loop_after_time(5000, self.__watch_player)
 
     
-    def __safe_shutdown(self, event = None) -> None:
+    def _safe_shutdown(self, event = None) -> None:
         """Safe shutdown procedure"""
         Logger().info("[Tkinter] Initiating safe shutdown")
         
@@ -562,6 +566,7 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         try:
             # Close serial connection
             self.__serial_port.close()
+            self.__mqtt_client.disconnect()
         except Exception as e:
             Logger().error(f"[Tkinter] Error closing serial: {str(e)}")
         
@@ -572,6 +577,7 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         except tkinter.TclError:
             pass  # Window already destroyed
         
+        Logger().info("[App] Shutdown complete.")
         sys.exit(0)
 
 
