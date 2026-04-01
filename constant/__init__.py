@@ -35,6 +35,8 @@ class StructMsg:
     DATA = "data"
     FEEDBACK = "feedback"
 
+EXPORT_DISPLAY = False
+
 # Serial
 SERIAL_PORT = get_serial()
 BAURATE = 115200
@@ -45,7 +47,7 @@ POLL_SERIAL_MS = 100
 # Media
 VIDEO_DIR = Path(r"D:\Outsource\RFID\Video")
 HOME_PATH = Path(r"D:\Outsource\RFID\JPG\Home.jpg")
-CFG_PATH = Path(r"D:\Outsource\RFID\config.yaml")
+CFG_PATH = Path(r"config.yaml")
 
 # Mqtt
 BROKER = "192.168.137.192"

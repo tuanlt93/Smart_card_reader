@@ -498,7 +498,7 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
             self.__restart_video()        # phát lại video hiện tại / về màn hình home
 
         # gọi lại sau 5s
-        self.__root_ui.after(5000, self.__watch_player)
+        self.run_loop_after_time(5000, self.__watch_player)
 
     
     def __safe_shutdown(self, event = None) -> None:

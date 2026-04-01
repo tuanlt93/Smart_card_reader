@@ -14,7 +14,7 @@ import json
 import threading
 import time
 import gc
-from constant import (SERIAL_PORT, BAURATE, MAX_BACKOFF, MIN_BACKOFF,
+from constant import (SERIAL_PORT, BAURATE, MAX_BACKOFF, MIN_BACKOFF, EXPORT_DISPLAY,
                       VIDEO_DIR, HOME_PATH, CFG_PATH, MediaState, StructMsg,
                       BROKER, PORT, TOPIC_DEVICE, TOPIC_DEVICE_STT,
                       TOPIC_VIDEO, TOPIC_VIDEO_STT, USENAME, 
@@ -306,24 +306,37 @@ class LinuxMqttClient(Singleton, MqttClient):
 # ──────────────────────────────────────────────────────────────
 class LinuxTkinterUI(Singleton):
     def __init__(self):
-        self.__root = tkinter.Tk()
-        self.__root.update_idletasks()
-
-        # # Get screen dimensions
-        # self.__screen_width = self.__root.winfo_screenwidth()
-        # self.__screen_height = self.__root.winfo_screenheight()
-
+        self.__export_display = EXPORT_DISPLAY
+        self.__root = None
+        self.__canvas = None
+        self.__home_lbl = None
         self.__screen_width = 1080
         self.__screen_height = 720
+        self.__running = True
 
-        self.__root.geometry(f"{self.__screen_width}x{self.__screen_height}+0+0")
-        self.__root.attributes("-fullscreen", False)
-        self.__root.config(cursor="none", bg="black")
-        
-        # Create UI elements
-        self.__canvas = tkinter.Canvas(self.__root, bg="black", highlightthickness=0)
-        self.__home_lbl = tkinter.Label(self.__root, bg="black")
-        self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+        if self.__export_display:
+            try:
+                self.__root = tkinter.Tk()
+                self.__root.update_idletasks()
+
+                # # Get screen dimensions
+                # self.__screen_width = self.__root.winfo_screenwidth()
+                # self.__screen_height = self.__root.winfo_screenheight()
+
+                self.__screen_width = 1080
+                self.__screen_height = 720
+
+                self.__root.geometry(f"{self.__screen_width}x{self.__screen_height}+0+0")
+                self.__root.attributes("-fullscreen", False)
+                self.__root.config(cursor="none", bg="black")
+                
+                # Create UI elements
+                self.__canvas = tkinter.Canvas(self.__root, bg="black", highlightthickness=0)
+                self.__home_lbl = tkinter.Label(self.__root, bg="black")
+                self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+            except tkinter.TclError as e:
+                Logger().error(f"[UI] Failed to init Tkinter (No Display): {e}")
+                self.__export_display = False
 
     def root_ui(self) -> tkinter.Tk:
         return self.__root
@@ -335,13 +348,37 @@ class LinuxTkinterUI(Singleton):
         return self.__home_lbl
 
     def mainloop(self) -> None:
-        return self.__root.mainloop()
+        if self.__export_display and self.__root:
+            return self.__root.mainloop()
+        else:
+            # Headless mode: Chạy vòng lặp vô tận để giữ app hoạt động
+            Logger().info("[UI] Running in Headless Mode (No GUI)")
+            try:
+                while self.__running:
+                    time.sleep(0.5)
+            except KeyboardInterrupt:
+                self.__running = False
 
     def run_loop_after_time(self, poll_time_ms: int, func: Callable) -> str:
-        return self.__root.after(poll_time_ms, func)
+        if self.__export_display and self.__root:
+            return self.__root.after(poll_time_ms, func)
+        else:
+            # Giả lập 'after' bằng Thread nếu ở chế độ Headless
+            def delayed_exec():
+                time.sleep(poll_time_ms / 1000.0)
+                if self.__running:
+                    func()
+            
+            thread = threading.Thread(target=delayed_exec, daemon=True)
+            thread.start()
+            return str(thread.ident)
     
     def cancel_run_loop_after_time(self, job: str) -> None:
-        return self.__root.after_cancel(job)
+        if self.__export_display and self.__root and job:
+            try:
+                self.__root.after_cancel(job)
+            except ValueError:
+                pass
 
 
 # ──────────────────────────────────────────────────────────────
@@ -368,8 +405,10 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         ] 
         super().__init__()
 
+        self.__uid_map = uid_map
         self.__serial_port = serial_port
         self.__mqtt_client = mqtt_client
+        self.__export_display = EXPORT_DISPLAY
 
         self.__vlc = vlc.Instance(self.__opts)
         self.__player = self.__vlc.media_player_new()
@@ -379,16 +418,16 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         self.__home_lbl: Optional[tkinter.Label] = self.home_lbl()
 
         # Setup linux close protocol
-        self.__root_ui.bind("<Escape>", lambda e: self.__safe_shutdown())
-        self.__root_ui.protocol("WM_DELETE_WINDOW", self.__safe_shutdown)
+        if self.__export_display and self.__root_ui:
+            self.__root_ui.bind("<Escape>", lambda e: self.__safe_shutdown())
+            self.__root_ui.protocol("WM_DELETE_WINDOW", self.__safe_shutdown)
+
+            # Set canvas window ID
+            self.__root_ui.update_idletasks()
+            self.__player.set_xwindow(self.__canvas.winfo_id())
 
         self.__current_uid = ""
         self.__media_cache = {}
-        self.__uid_map = uid_map
-
-        # Set canvas window ID
-        self.__root_ui.update_idletasks()
-        self.__player.set_xwindow(self.__canvas.winfo_id())
         
         # Setup end of video event handling
         self.__event_manager = self.__player.event_manager()
@@ -403,8 +442,10 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
     def __on_video_end(self, event):
         """Handle end of video event"""
         # Schedule restart in main thread
-        if self.__current_uid:
-            self.__root_ui.after(0, self.__restart_video)
+        if self.__export_display and self.__root_ui:
+            self.__root_ui.after(0, self.show_home)
+        else:
+            self.__current_uid = ""
 
     def __restart_video(self):
         """Restart the current video"""
@@ -429,9 +470,16 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
             except Exception as e:
                 Logger().error(f"[Tkinter] Error stopping player: {str(e)}")
             self.__current_uid = ""
-            
-        self.__canvas.place_forget()
-        self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+        
+        if self.__export_display and self.__canvas and self.__home_lbl:
+            self.__canvas.place_forget()
+            self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+
+        msg: Dict = {
+                StructMsg.CMD: StructMsg.FEEDBACK,
+                StructMsg.DATA: MediaState.STOPED
+            }
+        self.__mqtt_client.publisher(TOPIC_VIDEO_STT, msg)
 
     def play_video(self, uid: str) -> None:
         """Play video for specified UID"""
@@ -446,8 +494,9 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
                 self.__current_uid = uid
                 
                 # Show video canvas
-                self.__home_lbl.place_forget()
-                self.__canvas.place(x=0, y=0, relwidth=1, relheight=1)
+                if self.__export_display and self.__home_lbl and self.__canvas:
+                    self.__home_lbl.place_forget()
+                    self.__canvas.place(x=0, y=0, relwidth=1, relheight=1)
                 
                 Logger().info(f"[Tkinter] Playing video for UID: {uid}")
                 msg: Dict = {
@@ -489,10 +538,13 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
                 pass
             # tạo MediaPlayer mới rồi gắn vào cửa sổ
             self.__player = self.__vlc.media_player_new()
-            self.__attach_player_window()
-            self.__restart_video()        # phát lại video hiện tại / về màn hình home
-        # gọi lại sau 10 s
-        self.__root_ui.after(5000, self.__watch_player)
+
+            if self.__export_display and self.__root_ui:
+                self.__attach_player_window()
+                self.__restart_video()        # phát lại video hiện tại / về màn hình home
+
+        # gọi lại sau 5s
+        self.run_loop_after_time(5000, self.__watch_player)
 
     
     def __safe_shutdown(self, event = None) -> None:
