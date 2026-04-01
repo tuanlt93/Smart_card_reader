@@ -320,11 +320,11 @@ class LinuxTkinterUI(Singleton):
                 self.__root.update_idletasks()
 
                 # # Get screen dimensions
-                # self.__screen_width = self.__root.winfo_screenwidth()
-                # self.__screen_height = self.__root.winfo_screenheight()
+                self.__screen_width = self.__root.winfo_screenwidth()
+                self.__screen_height = self.__root.winfo_screenheight()
 
-                self.__screen_width = 1080
-                self.__screen_height = 720
+                # self.__screen_width = 1080
+                # self.__screen_height = 720
 
                 self.__root.geometry(f"{self.__screen_width}x{self.__screen_height}+0+0")
                 self.__root.attributes("-fullscreen", False)
@@ -394,18 +394,32 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         self.__opts = [
             "--no-video-title-show",
             "--fullscreen",
-            "--network-caching=500",
-            "--file-caching=500",
+            "--quiet",
+            "--network-caching=2000",
+            "--file-caching=2000",
+            
+            # Đồng bộ hóa cực đoan
             "--drop-late-frames",
             "--skip-frames",
-            "--quiet",
+            
+            # Âm thanh
             "--aout=alsa",
-            "--alsa-audio-device=hw:2,0",
-            "--audio-replay-gain-mode=none",
+            "--alsa-audio-device=default",
+            
+            # XUẤT HÌNH TRỰC TIẾP (DRM/KMS)
+            # Bỏ qua hoàn toàn X11 để tránh crash HDMI
+            "--vout=drm", 
+            "--no-xlib",
             "--gain=1.0",
-            "--no-xlib",                 # tránh phụ thuộc X11
-            "--vout=drm",                # xuất trực tiếp KMS
-            "--avcodec-hw=v4l2m2m",      # giải mã HW
+            
+            # Giải mã phần cứng
+            "--avcodec-hw=v4l2m2m",
+            
+            # Tối ưu tài nguyên
+            "--no-osd",
+            "--avcodec-skiploopfilter=4",
+            "--no-stats",
+            "--no-mouse-events",
         ] 
         super().__init__()
 
@@ -519,9 +533,8 @@ class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
         if not media:
             media = self.__vlc.media_new(self.__uid_map[uid])
             # Add media options for performance
-            media.add_option(":avcodec-hw=any")
-            media.add_option(":no-avcodec-dr")
-            media.add_option(":avcodec-skiploopfilter=all")
+            media.add_option(":avcodec-hw=v4l2m2m")
+            media.add_option(":avcodec-skiploopfilter=4")
             self.__media_cache[uid] = media
         return media
     

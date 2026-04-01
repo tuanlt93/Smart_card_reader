@@ -8,7 +8,7 @@ import sys
 import json
 from utils.logger import Logger
 from constant import (BROKER, PORT, POLL_SERIAL_MS, POLL_REGISTER_SUB, MediaState, StructMsg,
-                      TOPIC_DEVICE, TOPIC_DEVICE_STT, 
+                      TOPIC_DEVICE, TOPIC_DEVICE_STT, EXPORT_DISPLAY,
                       TOPIC_VIDEO, TOPIC_VIDEO_STT)
 
 class RFIDVideoApp:
@@ -45,7 +45,8 @@ class RFIDVideoApp:
     def __register_topic_sub(self):
         if self.__mqtt_client.is_connected():
             self.__mqtt_client.subscriber(TOPIC_DEVICE, self.__handel_topic_device)
-            self.__mqtt_client.subscriber(TOPIC_VIDEO, self.__handel_topic_video)
+            if EXPORT_DISPLAY:
+                self.__mqtt_client.subscriber(TOPIC_VIDEO, self.__handel_topic_video)
             if self.__run_register_sub:
                 self.__media.cancel_run_loop_after_time(self.__run_register_sub)
                 self.__run_register_sub = ""

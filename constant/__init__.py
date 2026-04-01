@@ -35,17 +35,19 @@ class StructMsg:
     DATA = "data"
     FEEDBACK = "feedback"
 
-EXPORT_DISPLAY = False
+# Main
+PLATFORM_SYSTEM = get_flatform()
+EXPORT_DISPLAY = True
 
 # Serial
-SERIAL_PORT = get_serial()
+SERIAL_PORT = "/dev/device0" if PLATFORM_SYSTEM == "Linux" else "COM20"
 BAURATE = 115200
 MAX_BACKOFF = 5
 MIN_BACKOFF = 1
 POLL_SERIAL_MS = 100
 
 # Media
-VIDEO_DIR = Path(r"D:\Outsource\RFID\Video")
+VIDEO_DIR = Path(r"/home/tuanlt/Videos") if PLATFORM_SYSTEM == "Linux" else Path(r"D:\Outsource\RFID\Video")
 HOME_PATH = Path(r"D:\Outsource\RFID\JPG\Home.jpg")
 CFG_PATH = Path(r"config.yaml")
 
@@ -61,5 +63,3 @@ PASSWORD = "admin"
 CLIENT_ID = get_client_id()
 POLL_REGISTER_SUB = 2000
 
-# Main
-PLATFORM_SYSTEM = get_flatform()
