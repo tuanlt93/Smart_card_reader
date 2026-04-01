@@ -7,7 +7,7 @@ import platform
 import sys
 import json
 from utils.logger import Logger
-from constant import (BROKER, PORT, POLL_SERIAL_MS, POLL_REGISTER_SUB,
+from constant import (BROKER, PORT, POLL_SERIAL_MS, POLL_REGISTER_SUB, MediaState, StructMsg,
                       TOPIC_DEVICE, TOPIC_DEVICE_STT, 
                       TOPIC_VIDEO, TOPIC_VIDEO_STT)
 
@@ -37,6 +37,7 @@ class RFIDVideoApp:
     def __poll_serial(self) -> None:
         lines = self.__serial.receive_datas()
         for item in lines:
+            item[StructMsg.CMD] = StructMsg.FEEDBACK
             self.__mqtt_client.publisher(TOPIC_DEVICE_STT, item)
         self.__run_poll_serial = self.__media.run_loop_after_time(POLL_SERIAL_MS, self.__poll_serial)
             
@@ -69,11 +70,12 @@ class RFIDVideoApp:
             "cmd": "play", / "stop"
             "data": "001"
         """
-        cmd = msg.get("cmd")
-        uid_video = msg.get("data")
-        if cmd == "play":
+        cmd = msg.get(StructMsg.CMD)
+        uid_video = msg.get(StructMsg.DATA)
+
+        if cmd == MediaState.PLAY:
             self.__media.play_video(uid_video)
-        elif cmd == "stop":
+        elif cmd == MediaState.STOP:
             self.__media.show_home()
 
 def choose_factory() -> AppComponents:

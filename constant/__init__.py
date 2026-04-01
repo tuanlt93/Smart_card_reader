@@ -23,7 +23,17 @@ def get_serial() -> str:
         return "COM20"
     else:
         return "None"
-        
+
+class MediaState:
+    PLAY = "play"
+    STOP = "stop"
+    PLAYING = "playing"
+    STOPED  = "stoped"
+
+class StructMsg:
+    CMD = "cmd"
+    DATA = "data"
+    FEEDBACK = "feedback"
 
 # Serial
 SERIAL_PORT = get_serial()

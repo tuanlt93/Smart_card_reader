@@ -14,7 +14,7 @@ import json
 import threading
 import time
 from constant import (SERIAL_PORT, BAURATE, MAX_BACKOFF, MIN_BACKOFF,
-                      VIDEO_DIR, HOME_PATH, CFG_PATH,
+                      VIDEO_DIR, HOME_PATH, CFG_PATH, MediaState, StructMsg,
                       BROKER, PORT, TOPIC_DEVICE, TOPIC_DEVICE_STT,
                       TOPIC_VIDEO, TOPIC_VIDEO_STT, USENAME, 
                       PASSWORD, CLIENT_ID)        
@@ -27,7 +27,6 @@ class Singleton:
         return cls._instance
 
 # --- Concrete Products for Win ---
-
 class WindownsConfig(Config):
     def __init__(self):
         self.__video_dir = VIDEO_DIR
@@ -405,6 +404,11 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
         # if self.__current_uid:
             # self.__root_ui.after(0, self.__restart_video)
         self.__root_ui.after(0, self.show_home)
+        msg: Dict = {
+                StructMsg.CMD: StructMsg.FEEDBACK,
+                StructMsg.DATA: MediaState.STOPED
+            }
+        self.__mqtt_client.publisher(TOPIC_VIDEO_STT, msg)
 
     def __restart_video(self):
         """Restart the current video"""
@@ -450,6 +454,12 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
                 self.__canvas.place(x=0, y=0, relwidth=1, relheight=1)
                 
                 Logger().info(f"[Tkinter] Playing video for UID: {uid}")
+
+                msg: Dict = {
+                    StructMsg.CMD: StructMsg.FEEDBACK,
+                    StructMsg.DATA: MediaState.PLAYING
+                }
+                self.__mqtt_client.publisher(TOPIC_VIDEO_STT, msg)
             
         except Exception as e:
             Logger().error(f"[Tkinter] Video play error: {str(e)}")
