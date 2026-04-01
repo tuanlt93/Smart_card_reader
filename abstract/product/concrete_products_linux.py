@@ -25,7 +25,7 @@ class LinuxConfig(Config):
         self.__video_dir    = Path(r"/home/pi/Videos")
         self.__home_img     = Path(r"/home/pi/RFID/JPG/Home.jpg")
         self.__cfg          = Path(r"/home/pi/RFID/config.yaml")
-        self.__serial       = "/dev/rfid0"
+        self.__serial       = "/dev/device0"
         self.__baudrate     = 115200
 
     def serial_port_name(self) -> str: return self.__serial
@@ -59,7 +59,7 @@ class LinuxConfig(Config):
 # Concrete Products - Serial
 # ──────────────────────────────────────────────────────────────
 class LinuxSerialPort(Singleton ,SerialPort):
-    def __init__(self, port_name: str = "/dev/rfid0", baudrate: int = 115200):
+    def __init__(self, port_name: str = "/dev/device0", baudrate: int = 115200):
         self.__port = port_name
         self.__baud = baudrate
         self.__ser: Optional[serial.Serial] = None
@@ -117,7 +117,7 @@ class LinuxSerialPort(Singleton ,SerialPort):
     def is_opened(self) -> bool:
         return bool(self.__ser and self.__ser.is_open)
             
-    def get_time_polling(self):
+    def get_time_reconnect(self):
         self.__error_count += 1
         # Tăng thời gian backoff theo cấp số nhân nhưng không vượt quá giới hạn
         self.__backoff_time = min(self.__backoff_time * 2, self.__max_backoff)

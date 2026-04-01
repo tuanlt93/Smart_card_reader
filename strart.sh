@@ -17,7 +17,7 @@ Environment=XAUTHORITY=/home/pi/.Xauthority   # đường dẫn của user
 # --- User / quyền ---
 User=pi
 Group=pi
-# Nếu bạn đã tạo /dev/rfid0 với MODE=0660 GROUP=dialout
+# Nếu bạn đã tạo /dev/device0 với MODE=0660 GROUP=dialout
 SupplementaryGroups=dialout
 
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 20); do /usr/bin/amixer -c 2 sset "PCM" 100% unmute && exit 0; sleep 1; done; exit 1'

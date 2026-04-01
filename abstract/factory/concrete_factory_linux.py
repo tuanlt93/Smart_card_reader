@@ -8,7 +8,7 @@ class LinuxAppComponents(AppComponents):
     def create_config(self) -> Config:
         return LinuxConfig()
 
-    def create_serial(self, port_name: str = "/dev/rfid0", baudrate: int = 115200) -> SerialPort:
+    def create_serial(self, port_name: str = "/dev/device0", baudrate: int = 115200) -> SerialPort:
         return LinuxSerialPort(port_name = port_name, baudrate = baudrate)
 
     def create_media(self, home_img_path: Path, uid_map: Dict[str, str], serial_port: SerialPort) -> MediaEngine:

@@ -5,76 +5,76 @@ from abstract.factory.concrete_factory_linux import LinuxAppComponents
 from abstract.factory.abstract_factory import AppComponents
 import platform
 import sys
+import json
 from utils.logger import Logger
-
-POLL_MS = 200
+from constant import (BROKER, PORT, POLL_SERIAL_MS, POLL_REGISTER_SUB,
+                      TOPIC_DEVICE, TOPIC_DEVICE_STT, 
+                      TOPIC_VIDEO, TOPIC_VIDEO_STT)
 
 class RFIDVideoApp:
     def __init__(self, app_components: AppComponents) -> None:
         # 1) Hạ tầng theo nền tảng
-        self.__config            = app_components.create_config()
-        self.__home_img_path     = self.__config.home_img()           # Path
-        self.__serial_port_name  = self.__config.serial_port_name()   # str
-        self.__baudrate          = self.__config.baudrate()           # int
+        self.__config = app_components.create_config()        # int
         self.__uid_map: Dict[str, str] = self.__config.load_config()  # {uid: filepath}
 
         # 2) Serial + Media (theo Abstract Factory)
-        self.__serial = app_components.create_serial(self.__serial_port_name, self.__baudrate)
-        self.__media  = app_components.create_media(self.__home_img_path, self.__uid_map, self.__serial)
+        self.__serial = app_components.create_serial()
+        self.__mqtt_client = app_components.create_mqtt_client(BROKER, PORT)
+        self.__media  = app_components.create_media(self.__uid_map, self.__serial, self.__mqtt_client)
 
         # 3) Trạng thái chống lặp
         self.__last_cmd: str | None = None
 
         # 4) Vòng lặp đọc serial + UI loop
         self.__run_poll_serial  = ""
-        self.__run_reconnect    = ""
-        self.__run_poll_serial = self.__media.run_loop_after_time(POLL_MS, self.__poll_serial)
+        self.__run_register_sub = ""
+
+        self.__run_poll_serial = self.__media.run_loop_after_time(POLL_SERIAL_MS, self.__poll_serial)
+        self.__run_register_sub = self.__media.run_loop_after_time(POLL_REGISTER_SUB, self.__register_topic_sub)
         self.__media.mainloop()
 
-    # ── Serial ────────────────────────────────────────────────
+    # Serial
     def __poll_serial(self) -> None:
-        if self.__serial.is_opened():
-            lines = self.__serial.receive_datas()
-            if lines:
-                self.__process_cmd(lines[-1])
+        lines = self.__serial.receive_datas()
+        for item in lines:
+            self.__mqtt_client.publisher(TOPIC_DEVICE_STT, item)
+        self.__run_poll_serial = self.__media.run_loop_after_time(POLL_SERIAL_MS, self.__poll_serial)
             
-            self.__run_poll_serial = self.__media.run_loop_after_time(POLL_MS, self.__poll_serial)
+    # Xử lý lệnh từ pc server
+    def __register_topic_sub(self):
+        if self.__mqtt_client.is_connected():
+            self.__mqtt_client.subscriber(TOPIC_DEVICE, self.__handel_topic_device)
+            self.__mqtt_client.subscriber(TOPIC_VIDEO, self.__handel_topic_video)
+            if self.__run_register_sub:
+                self.__media.cancel_run_loop_after_time(self.__run_register_sub)
+                self.__run_register_sub = ""
         else:
-            # Hủy loop poll serial
-            self.__media.cancel_run_loop_after_time(self.__run_poll_serial)
-            self.__run_poll_serial  = ""
+            self.__run_register_sub = self.__media.run_loop_after_time(POLL_REGISTER_SUB, self.__register_topic_sub)
 
-            # Run loop reconnect
-            self.__run_reconnect = self.__media.run_loop_after_time(self.__serial.get_time_polling() * 1000, self.__reconnect_serial)
-            
+    def __handel_topic_device(self, msg: Dict) -> None:
+        """
+        {
+            "cmd": "set_io",
+            "data": {
+                    "D1": 1,
+                    "D2": 0,
+                    "D3": 1
+                }
+            }
+        """
+        self.__serial.add_data_send(msg)
 
-    def __reconnect_serial(self) -> None:
-        self.__serial.open()
-        if self.__serial.is_opened():
-            # Hủy loop reconnect
-            self.__media.cancel_run_loop_after_time(self.__run_reconnect)
-            self.__run_reconnect    = ""
-
-            # Run loop poll serial
-            self.__run_poll_serial = self.__media.run_loop_after_time(POLL_MS, self.__poll_serial)
-        else:
-            self.__run_reconnect = self.__media.run_loop_after_time(self.__serial.get_time_polling() * 1000, self.__reconnect_serial)
-
-
-    # ── Xử lý lệnh từ ESP32 ───────────────────────────────────
-    def __process_cmd(self, cmd: str) -> None:
-        if cmd == self.__last_cmd:
-            return  # chống lặp y hệt, tránh spam phát lại
-
-        if cmd == "removed":
+    def __handel_topic_video(self, msg: Dict) -> None:
+        """{
+            "cmd": "play", / "stop"
+            "data": "001"
+        """
+        cmd = msg.get("cmd")
+        uid_video = msg.get("data")
+        if cmd == "play":
+            self.__media.play_video(uid_video)
+        elif cmd == "stop":
             self.__media.show_home()
-        elif cmd in self.__uid_map:
-            self.__media.play_video(cmd)
-        else:
-            Logger().warning("Unknown UID/cmd: %s", cmd)
-
-        self.__last_cmd = cmd
-
 
 def choose_factory() -> AppComponents:
     if platform.system() == "Linux":
@@ -86,6 +86,7 @@ def choose_factory() -> AppComponents:
         sys.exit(1)
 
 if __name__ == "__main__":
+    Logger(level='info', to_screen=True, to_file=False)
     try:
         app_components = choose_factory()
         RFIDVideoApp(app_components)

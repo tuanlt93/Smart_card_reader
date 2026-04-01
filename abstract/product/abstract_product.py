@@ -2,40 +2,39 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Tuple, Dict, Callable
 import tkinter
+import json
 from PIL import Image, ImageTk
-
 # --- Abstract Products ---
 
 class Config(ABC):
     @abstractmethod
-    def home_img(self) -> Path: ...
-
-    @abstractmethod
     def load_config(self) -> Dict[str, str]: ...
 
-    @abstractmethod
-    def serial_port_name(self) -> str: ...
-
-    @abstractmethod
-    def baudrate(self) -> int: ...
-
-
 class SerialPort(ABC):
-    @abstractmethod
-    def open(self) -> None: ...
-
     @abstractmethod
     def close(self) -> None: ...
 
     @abstractmethod
-    def receive_datas(self) -> List[str]: ...
+    def receive_datas(self) -> List: ...
+
+    @abstractmethod
+    def add_data_send(self, data: Dict) -> None: ...
 
     @abstractmethod
     def is_opened(self) -> bool: ...
 
+class MqttClient(ABC):
     @abstractmethod
-    def get_time_polling(self) -> int: ...
+    def is_connected(self) -> bool: ...
 
+    @abstractmethod
+    def publisher(self, topic: str, payload: Dict, retain: bool = False) -> None: ...
+
+    @abstractmethod
+    def subscriber(self, topic: str, callback: Callable, *args, **kwargs): ...
+
+    @abstractmethod
+    def disconnect(self) -> None: ...
 
 class MediaEngine(ABC):
     @abstractmethod

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from ..product.abstract_product import Config, SerialPort, MediaEngine
+from ..product.abstract_product import Config, SerialPort, MediaEngine, MqttClient
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 # ──────────────────────────────────────────────────────────────
 # Abstract Factory
 # ──────────────────────────────────────────────────────────────
@@ -11,8 +11,11 @@ class AppComponents(ABC):
     def create_config(self) -> Config: ...
 
     @abstractmethod
-    def create_serial(self, port_name: str, baudrate: int) -> SerialPort: ...
+    def create_serial(self) -> SerialPort: ...
 
     @abstractmethod
-    def create_media(self, home_img_path: Path, uid_map: Dict[str, str], serial_port: SerialPort) -> MediaEngine: ...
+    def create_mqtt_client(self, broker: str, port: int) -> MqttClient: ...
+
+    @abstractmethod
+    def create_media(self, uid_map: Dict[str, str], serial_port: SerialPort, mqtt_client: MqttClient) -> MediaEngine: ...
         
