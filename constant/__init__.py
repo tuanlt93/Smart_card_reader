@@ -52,7 +52,7 @@ HOME_PATH = Path(r"D:\Outsource\RFID\JPG\Home.jpg")
 CFG_PATH = Path(r"config.yaml")
 
 # Mqtt
-BROKER = "192.168.137.192"
+BROKER = "0.0.0.0"
 PORT = 1883
 TOPIC_DEVICE = "/topic/device"
 TOPIC_DEVICE_STT = "/topic/device/status"
