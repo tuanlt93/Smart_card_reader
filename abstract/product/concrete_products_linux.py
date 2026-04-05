@@ -94,8 +94,8 @@ class LinuxSerialPort(Singleton ,SerialPort):
             self.close()
             
             self.__ser = serial.Serial(
-                self.__port,
-                self.__baud,
+                port=self.__port,
+                baudrate=self.__baud,
                 timeout=0.1,        # Quan trọng cho readline()
                 write_timeout=0.1,
                 dsrdtr=False,
