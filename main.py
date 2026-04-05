@@ -56,11 +56,34 @@ class RFIDVideoApp:
     def __handel_topic_device(self, msg: Dict) -> None:
         """
         {
-            "cmd": "set_io",
+            "cmd": "io",
             "data": {
                     "D1": 1,
+                }
+            }
+
+            "cmd": "io",
+            "data": {
                     "D2": 0,
+                }
+            }
+
+            "cmd": "io",
+            "data": {
                     "D3": 1
+                }
+            }
+             
+            "cmd": "reset"
+            "data": null
+
+            "cmd": "info"
+            "data": null
+
+            "cmd": "blink"
+            "data": {
+                    "io": "D1",
+                    "duration": 1000
                 }
             }
         """

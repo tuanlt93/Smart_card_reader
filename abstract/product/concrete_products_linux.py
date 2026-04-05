@@ -66,7 +66,8 @@ class LinuxSerialPort(Singleton ,SerialPort):
         self.__min_backoff = MIN_BACKOFF
         self.__backoff_time = self.__min_backoff
 
-        self.__datas_send = queue.Queue()
+        self.__datas_pre_send = queue.Queue(maxsize=30)
+        self.__datas_send = queue.Queue(maxsize=30)
         self.__running = True
 
         # Thread 1: Duy trì kết nối
@@ -138,14 +139,72 @@ class LinuxSerialPort(Singleton ,SerialPort):
         return lines
 
     def add_data_send(self, data: Dict) -> None:
-        """Thêm dữ liệu vào hàng đợi gửi (nên cho phép kể cả khi chưa mở port)"""
+        """ Thêm dữ liệu vào hàng đợi gửi (nên cho phép kể cả khi chưa mở port)
+            "cmd": "io",
+            "data": {
+                    "D1": 1,
+                }
+            }
+            "cmd": "reset"
+            "data": null
+
+            "cmd": "info"
+            "data": null
+
+            "cmd": "blink"
+            "data": {
+                    "io": "D1",
+                    "duration": 1000
+                }
+            }
+        """
         if isinstance(data, Dict):
-            self.__datas_send.put(data)
+            self.__datas_pre_send.put(data)
         else:
             Logger().warning(f"[Serial] Message send must is dict: {data}")
         
     def __send_data_loop(self) -> None:
         while self.__running:
+            # 1. Lấy tất cả tin nhắn hiện có trong hàng đợi sơ cấp
+            raw_batch = []
+
+            while not self.__datas_pre_send.empty():
+                try:
+                    raw_batch.append(self.__datas_pre_send.get_nowait())
+                    self.__datas_pre_send.task_done()
+                except queue.Empty:
+                    break
+
+            # 2. Gom nhóm các lệnh io lại với nhau
+            if raw_batch:
+                io_buffer = {}
+            
+                for msg in raw_batch:
+                    cmd = msg.get("cmd")
+                    data = msg.get("data")
+
+                    if cmd == "io":
+                        for key, value in data.items():
+                            io_buffer[key] = value
+
+                            # Nếu buffer đạt 10 keys, đóng gói và reset buffer
+                            if len(io_buffer) >= 5:
+                                self.__datas_send.put({"cmd": "io", "data": io_buffer.copy()})
+                                io_buffer.clear()
+                    else:
+                        # Gặp lệnh KHÔNG PHẢI "io" (reset, blink...):
+                        # BƯỚC 1: Xả buffer "io" hiện tại ra trước để giữ đúng thứ tự thời gian
+                        if io_buffer:
+                            self.__datas_send.put({"cmd": "io", "data": io_buffer.copy()})
+                            io_buffer.clear()
+
+                        # BƯỚC 2: Đưa lệnh đặc biệt vào hàng đợi
+                        self.__datas_send.put(msg)
+
+                # Cuối batch, nếu vẫn còn dư key trong io_buffer thì đẩy nốt
+                if io_buffer:
+                    self.__datas_send.put({"cmd": "io", "data": io_buffer})
+
             try:
                 msg = self.__datas_send.get(block=True, timeout=0.1)
                 if self.is_opened():
@@ -153,10 +212,9 @@ class LinuxSerialPort(Singleton ,SerialPort):
                         json_str = json.dumps(msg, separators=(',', ':')) + "\n"
                         self.__ser.write(json_str.encode('utf-8'))
                         self.__datas_send.task_done()
-                        time.sleep(0.05) 
+                        time.sleep(0.1)  # Thời gian nghỉ giữa các lệnh để tránh quá tải Serial
                     except (serial.SerialException, OSError) as e:
                         Logger().error(f"[Serial] Write error: {e}")
-                        self.__datas_send.put(msg)
                         self.close()
 
             except queue.Empty:
