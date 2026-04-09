@@ -10,21 +10,14 @@ Wants=graphical.target network-online.target sound.target
 [Service]
 Type=simple
 
-# --- Môi trường X11 ---
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/tuanlt/.Xauthority   # đường dẫn của user
-
 # --- User / quyền ---
 User=tuanlt
 Group=tuanlt
 # Nếu bạn đã tạo /dev/device0 với MODE=0660 GROUP=dialout
 SupplementaryGroups=dialout
 
-# Sử dụng cho pi2 pi3
-ExecStartPre=/bin/sh -c 'for i in \$(seq 1 5); do /usr/bin/amixer -c 0 sset \"PCM\" 100% unmute && exit 0; sleep 1; done; exit 0'
-
 # --- Thư mục & lệnh chạy ---
-WorkingDirectory=/home/tuanlt/Smart_card_reader
+WorkingDirectory=/home/tuanlt/Smart_card_reader/manager_serial_service
 ExecStart=/home/tuanlt/Smart_card_reader/venv/bin/python3 /home/tuanlt/Smart_card_reader/manager_serial_service/main.py
 
 # --- Tự khởi động lại khi lỗi ---

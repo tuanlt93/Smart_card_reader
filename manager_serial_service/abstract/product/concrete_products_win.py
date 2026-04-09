@@ -70,7 +70,14 @@ class WindownsSerialPort(Singleton, SerialPort):
                 dsrdtr=False,
                 rtscts=False
             )
-            time.sleep(2)  # Đợi cho cổng ổn định
+            # 1. Đợi một chút cho phần cứng ổn định (0.5s là đủ)
+            time.sleep(0.5) 
+            
+            # 2. BƯỚC QUAN TRỌNG: Xả sạch buffer cũ 
+            # Đọc bỏ sạch sành sanh những gì ESP32 đã gửi trong 0.5s qua
+            if self.__ser.in_waiting > 0:
+                self.__ser.read(self.__ser.in_waiting)
+
             self.__ser.reset_input_buffer()
             self.__ser.reset_output_buffer()
             Logger().info(f"[Serial] Serial connected: {self.__port}")

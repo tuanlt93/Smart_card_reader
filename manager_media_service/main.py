@@ -87,7 +87,7 @@ def choose_factory() -> AppComponents:
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Logger(level='warn', to_screen=False, to_file=True)
+    Logger(level='warn', to_screen=False, to_file=True)
     try:
         app_components = choose_factory()
         RFIDVideoApp(app_components)

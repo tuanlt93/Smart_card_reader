@@ -41,7 +41,14 @@ class RFIDVideoApp:
                     self.__mqtt_client.publisher(TOPIC_DEVICE_STT, item)
 
                 elif item.get(StructMsg.CMD) == StructMsg.INFO:
-                    self.__mqtt_client.publisher(TOPIC_INFO, item)
+                    info = {
+                        "cmd": "info",
+                        "msg": {
+                            "serial_number": CLIENT_ID,
+                            "data": item.get("data")
+                        }
+                    }
+                    self.__mqtt_client.publisher(TOPIC_INFO, info)
 
             time.sleep(POLL_SERIAL)
             
@@ -77,6 +84,9 @@ class RFIDVideoApp:
                     "D3": 1
                 }
             }
+
+            "cmd": "status",
+            "msg": null
              
             "cmd": "reset"
             "data": null
@@ -106,9 +116,7 @@ class RFIDVideoApp:
                 "cmd":"info",
                 "data":{
                     "name":"esp32_devkit_v1",
-                    "input":[{"pin":"D18","type":"digital"},
-                            {"pin":"D19","type":"digital"},
-                            {"pin":"D34","type":"analog"}],
+                    "input":["D18", "D19", "A34"],
                     "output":["D2","D12","D13","D14","D15","D27"]
                 }
             }
@@ -129,7 +137,7 @@ def choose_factory() -> AppComponents:
         sys.exit(1)
 
 if __name__ == "__main__":
-    Logger(level='info', to_screen=True, to_file=False)
+    Logger(level='warn', to_screen=False, to_file=True)
     try:
         app_components = choose_factory()
         rfid = RFIDVideoApp(app_components)
