@@ -25,7 +25,7 @@ ExecStartPre=/bin/sh -c 'for i in \$(seq 1 5); do /usr/bin/amixer -c 0 sset \"PC
 
 # --- Thư mục & lệnh chạy ---
 WorkingDirectory=/home/tuanlt/Smart_card_reader
-ExecStart=/home/tuanlt/Smart_card_reader/venv/bin/python3 /home/tuanlt/Smart_card_reader/main.py
+ExecStart=/home/tuanlt/Smart_card_reader/venv/bin/python3 /home/tuanlt/Smart_card_reader/manager_media_service/main.py
 
 # --- Tự khởi động lại khi lỗi ---
 Restart=on-failure
@@ -34,11 +34,11 @@ RestartSec=5
 [Install]
 WantedBy=graphical.target
 "
-    echo "$service_file_content" | sudo tee /etc/systemd/system/gateway.service
+    echo "$service_file_content" | sudo tee /etc/systemd/system/manager_media.service
     
     sudo systemctl daemon-reload
-    sudo systemctl enable gateway.service
-    sudo systemctl start gateway.service
+    sudo systemctl enable manager_media.service
+    sudo systemctl start manager_media.service
     echo "Systemd unit file created and service started."
 }
 

@@ -1,4 +1,4 @@
-from .abstract_product import Config, SerialPort, MediaEngine, MqttClient
+from .abstract_product import Config, MediaEngine, MqttClient
 from typing import List, Optional, Tuple, Dict, Callable, Any
 from paho.mqtt import client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
@@ -13,11 +13,12 @@ import queue
 import json
 import threading
 import time
-from constant import (SERIAL_PORT, BAURATE, MAX_BACKOFF, MIN_BACKOFF,
+import gc
+from constant import (EXPORT_DISPLAY,
                       VIDEO_DIR, HOME_PATH, CFG_PATH, MediaState, StructMsg,
-                      BROKER, PORT, TOPIC_DEVICE, TOPIC_DEVICE_STT,
+                      BROKER, PORT,
                       TOPIC_VIDEO, TOPIC_VIDEO_STT, USENAME, 
-                      PASSWORD, CLIENT_ID)        
+                      PASSWORD, CLIENT_ID)    
 
 class Singleton:
     _instance = None
@@ -26,8 +27,8 @@ class Singleton:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-# --- Concrete Products for Win ---
-class WindownsConfig(Config):
+# --- Concrete Products for Linux ---
+class LinuxConfig(Config):
     def __init__(self):
         self.__video_dir = VIDEO_DIR
         self.__cfg = CFG_PATH
@@ -50,188 +51,14 @@ class WindownsConfig(Config):
             Logger().error(f"[CFG] Configuration error: {e}")
             raise
 
-
-# ──────────────────────────────────────────────────────────────
-# Concrete Products - Serial
-# ──────────────────────────────────────────────────────────────
-class WindownsSerialPort(Singleton, SerialPort):
-    def __init__(self):
-        # Giả định các hằng số này đã được import từ config.py
-        self.__port = SERIAL_PORT
-        self.__baud = BAURATE
-        self.__ser: Optional[serial.Serial] = None
-
-        self.__max_backoff = MAX_BACKOFF
-        self.__min_backoff = MIN_BACKOFF
-        self.__backoff_time = self.__min_backoff
-
-        self.__datas_pre_send = queue.Queue(maxsize=30)
-        self.__datas_send = queue.Queue(maxsize=30)
-        self.__running = True
-
-        # Thread 1: Duy trì kết nối
-        self.__maintain_thread = threading.Thread(target=self.__maintain_loop, daemon=True)
-        self.__maintain_thread.start()
-
-        # Thread 2: Gửi dữ liệu
-        self.__send_thread = threading.Thread(target=self.__send_data_loop, daemon=True)
-        self.__send_thread.start()
-
-    def __maintain_loop(self) -> None:
-        while self.__running:
-            if not self.is_opened():
-                if self.__open_connection():
-                    self.__backoff_time = self.__min_backoff
-                else:
-                    time.sleep(self.__backoff_time)
-                    self.__backoff_time = min(self.__backoff_time * 2, self.__max_backoff)
-                    continue
-            time.sleep(2)
-
-    def __open_connection(self) -> bool:
-        try:
-            self.close()
-            
-            self.__ser = serial.Serial(
-                port=self.__port,
-                baudrate=self.__baud,
-                timeout=0.2,        # Quan trọng cho readline()
-                write_timeout=0.1,
-                dsrdtr=False,
-                rtscts=False
-            )
-            time.sleep(2)  # Đợi cho cổng ổn định
-            self.__ser.reset_input_buffer()
-            self.__ser.reset_output_buffer()
-            Logger().info(f"[Serial] Serial connected: {self.__port}")
-            return True
-        except (serial.SerialException, OSError) as e:
-            self.__ser = None
-            Logger().error(f"[Serial] Serial connection failed: {e}")
-            return False
-
-    def close(self) -> None:
-        if self.__ser:
-            self.__ser.close()
-            self.__ser = None
-
-    def receive_datas(self) -> List[Dict]:
-        """Đọc và giải mã JSON từ Serial"""
-        lines = []
-        if not self.is_opened():
-            return lines
-
-        try:
-            while self.__ser.in_waiting > 0:
-                # Dùng errors='ignore' để tránh crash do nhiễu tín hiệu
-                raw_line = self.__ser.readline().decode('utf-8', errors='ignore').strip()
-                if not raw_line:
-                    continue
-                
-                try:
-                    data = json.loads(raw_line)
-                    lines.append(data)
-                except json.JSONDecodeError:
-                    Logger().warning(f"[Serial] Message receice must is json: {raw_line}")
-        except (serial.SerialException, OSError) as e:
-            Logger().error(f"[Serial] Serial Read Error: {e}")
-            self.close()
-        return lines
-
-    def add_data_send(self, data: Dict) -> None:
-        """ Thêm dữ liệu vào hàng đợi gửi (nên cho phép kể cả khi chưa mở port)
-            "cmd": "io",
-            "data": {
-                    "D1": 1,
-                }
-            }
-            "cmd": "reset"
-            "data": null
-
-            "cmd": "info"
-            "data": null
-
-            "cmd": "blink"
-            "data": {
-                    "io": "D1",
-                    "duration": 1000
-                }
-            }
-        """
-        if isinstance(data, Dict):
-            self.__datas_pre_send.put(data)
-        else:
-            Logger().warning(f"[Serial] Message send must is dict: {data}")
-        
-    def __send_data_loop(self) -> None:
-        while self.__running:
-            # 1. Lấy tất cả tin nhắn hiện có trong hàng đợi sơ cấp
-            raw_batch = []
-
-            while not self.__datas_pre_send.empty():
-                try:
-                    raw_batch.append(self.__datas_pre_send.get_nowait())
-                    self.__datas_pre_send.task_done()
-                except queue.Empty:
-                    break
-
-            # 2. Gom nhóm các lệnh io lại với nhau
-            if raw_batch:
-                io_buffer = {}
-            
-                for msg in raw_batch:
-                    cmd = msg.get("cmd")
-                    data = msg.get("data")
-
-                    if cmd == "io":
-                        for key, value in data.items():
-                            io_buffer[key] = value
-
-                            # Nếu buffer đạt 10 keys, đóng gói và reset buffer
-                            if len(io_buffer) >= 5:
-                                self.__datas_send.put({"cmd": "io", "data": io_buffer.copy()})
-                                io_buffer.clear()
-                    else:
-                        # Gặp lệnh KHÔNG PHẢI "io" (reset, blink...):
-                        # BƯỚC 1: Xả buffer "io" hiện tại ra trước để giữ đúng thứ tự thời gian
-                        if io_buffer:
-                            self.__datas_send.put({"cmd": "io", "data": io_buffer.copy()})
-                            io_buffer.clear()
-
-                        # BƯỚC 2: Đưa lệnh đặc biệt vào hàng đợi
-                        self.__datas_send.put(msg)
-
-                # Cuối batch, nếu vẫn còn dư key trong io_buffer thì đẩy nốt
-                if io_buffer:
-                    self.__datas_send.put({"cmd": "io", "data": io_buffer})
-
-            try:
-                msg = self.__datas_send.get(block=True, timeout=0.1)
-                if self.is_opened():
-                    try:
-                        json_str = json.dumps(msg, separators=(',', ':')) + "\n"
-                        self.__ser.write(json_str.encode('utf-8'))
-                        self.__datas_send.task_done()
-                        time.sleep(0.1)  # Thời gian nghỉ giữa các lệnh để tránh quá tải Serial
-                    except (serial.SerialException, OSError) as e:
-                        Logger().error(f"[Serial] Write error: {e}")
-                        self.close()
-
-            except queue.Empty:
-                continue
-
-    def is_opened(self) -> bool:
-        return bool(self.__ser and self.__ser.is_open)
-
-
 # ──────────────────────────────────────────────────────────────
 # Concrete MQTT
 # ──────────────────────────────────────────────────────────────
-class WindownsMqttClient(Singleton, MqttClient):
+class LinuxMqttClient(Singleton, MqttClient):
     def __init__(self, broker: str = "0.0.0.0", port: int = 1883):
         self.__broker = broker
         self.__port = port
-        self.__client_id = CLIENT_ID
+        self.__client_id = f"media_{CLIENT_ID}"
         
         # Initialize client with CallbackAPIVersion.VERSION2 (Required for paho-mqtt 2.0+)
         self.__client = mqtt.Client(
@@ -362,26 +189,39 @@ class WindownsMqttClient(Singleton, MqttClient):
 # ──────────────────────────────────────────────────────────────
 # Concrete Products - UI
 # ──────────────────────────────────────────────────────────────
-class WindownsTkinterUI(Singleton):
+class LinuxTkinterUI(Singleton):
     def __init__(self):
-        self.__root = tkinter.Tk()
-        self.__root.update_idletasks()
-
-        # # Get screen dimensions
-        # self.__screen_width = self.__root.winfo_screenwidth()
-        # self.__screen_height = self.__root.winfo_screenheight()
-
+        self.__export_display = EXPORT_DISPLAY
+        self.__root = None
+        self.__canvas = None
+        self.__home_lbl = None
         self.__screen_width = 1080
         self.__screen_height = 720
+        self.__running = True
 
-        self.__root.geometry(f"{self.__screen_width}x{self.__screen_height}+0+0")
-        self.__root.attributes("-fullscreen", False)
-        self.__root.config(cursor="none", bg="black")
-        
-        # Create UI elements
-        self.__canvas = tkinter.Canvas(self.__root, bg="black", highlightthickness=0)
-        self.__home_lbl = tkinter.Label(self.__root, bg="black")
-        self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+        if self.__export_display:
+            try:
+                self.__root = tkinter.Tk()
+                self.__root.update_idletasks()
+
+                # # Get screen dimensions
+                self.__screen_width = self.__root.winfo_screenwidth()
+                self.__screen_height = self.__root.winfo_screenheight()
+
+                # self.__screen_width = 1080
+                # self.__screen_height = 720
+
+                self.__root.geometry(f"{self.__screen_width}x{self.__screen_height}+0+0")
+                self.__root.attributes("-fullscreen", False)
+                self.__root.config(cursor="none", bg="black")
+                
+                # Create UI elements
+                self.__canvas = tkinter.Canvas(self.__root, bg="black", highlightthickness=0)
+                self.__home_lbl = tkinter.Label(self.__root, bg="black")
+                self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+            except tkinter.TclError as e:
+                Logger().error(f"[UI] Failed to init Tkinter (No Display): {e}")
+                self.__export_display = False
 
     def root_ui(self) -> tkinter.Tk:
         return self.__root
@@ -393,41 +233,84 @@ class WindownsTkinterUI(Singleton):
         return self.__home_lbl
 
     def mainloop(self) -> None:
-        return self.__root.mainloop()
+        if self.__export_display and self.__root:
+            return self.__root.mainloop()
+        else:
+            # Headless mode: Chạy vòng lặp vô tận để giữ app hoạt động
+            Logger().info("[UI] Running in Headless Mode (No GUI)")
+            try:
+                while self.__running:
+                    time.sleep(0.5)
+            except KeyboardInterrupt:
+                self.__running = False
+                self._safe_shutdown()
 
     def run_loop_after_time(self, poll_time_ms: int, func: Callable) -> str:
-        return self.__root.after(poll_time_ms, func)
+        if self.__export_display and self.__root:
+            return self.__root.after(poll_time_ms, func)
+        else:
+            # Giả lập 'after' bằng Thread nếu ở chế độ Headless
+            def delayed_exec():
+                time.sleep(poll_time_ms / 1000.0)
+                if self.__running:
+                    func()
+            
+            thread = threading.Thread(target=delayed_exec, daemon=True)
+            thread.start()
+            return str(thread.ident)
     
     def cancel_run_loop_after_time(self, job: str) -> None:
-        return self.__root.after_cancel(job)
-
+        if self.__export_display and self.__root and job:
+            try:
+                self.__root.after_cancel(job)
+            except ValueError:
+                pass
+    
+    def _safe_shutdown(self, event=None):
+        """Placeholder for shutdown logic - to be overridden by Engine"""
+        pass
 
 # ──────────────────────────────────────────────────────────────
 # Concrete Products - MEDIA (VLC)
 # ──────────────────────────────────────────────────────────────
-class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
-    def __init__(self, uid_map: Dict[str, str], serial_manager: SerialPort, mqtt_client: MqttClient):
+class LinuxVLCMediaEngine(LinuxTkinterUI, MediaEngine):
+    def __init__(self, uid_map: Dict[str, str], mqtt_client: MqttClient):
         # Chọn options theo OS
         self.__opts = [
-            "--no-xlib",  # Disable Xlib for better performance
             "--no-video-title-show",
-            "--network-caching=500",
+            "--fullscreen",
             "--quiet",
+            "--network-caching=2000",
+            "--file-caching=2000",
+            
+            # Đồng bộ hóa cực đoan
             "--drop-late-frames",
             "--skip-frames",
-            "--no-snapshot-preview", 
-            "--avcodec-skiploopfilter=all",
-            "--avcodec-skip-frame=nonref",
-            "--avcodec-skip-idct=nonref",
-            "--avcodec-fast",
-            "--avcodec-threads=0",  # Use all cores
-            "--avcodec-hw=none",
-            "--vout=direct3d9"
-        ]
+            
+            # Âm thanh
+            "--aout=alsa",
+            "--alsa-audio-device=default",
+            
+            # XUẤT HÌNH TRỰC TIẾP (DRM/KMS)
+            # Bỏ qua hoàn toàn X11 để tránh crash HDMI
+            "--vout=drm", 
+            "--no-xlib",
+            "--gain=1.0",
+            
+            # Giải mã phần cứng
+            "--avcodec-hw=v4l2m2m",
+            
+            # Tối ưu tài nguyên
+            "--no-osd",
+            "--avcodec-skiploopfilter=4",
+            "--no-stats",
+            "--no-mouse-events",
+        ] 
         super().__init__()
 
-        self.__serial_manager = serial_manager
+        self.__uid_map = uid_map
         self.__mqtt_client = mqtt_client
+        self.__export_display = EXPORT_DISPLAY
 
         self.__vlc = vlc.Instance(self.__opts)
         self.__player = self.__vlc.media_player_new()
@@ -436,17 +319,17 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
         self.__canvas: Optional[tkinter.Canvas] = self.canvas_ui()
         self.__home_lbl: Optional[tkinter.Label] = self.home_lbl()
 
-        # Setup window close protocol
-        self.__root_ui.bind("<Escape>", lambda e: self.__safe_shutdown())
-        self.__root_ui.protocol("WM_DELETE_WINDOW", self.__safe_shutdown)
+        # Setup linux close protocol
+        if self.__export_display and self.__root_ui:
+            self.__root_ui.bind("<Escape>", lambda e: self._safe_shutdown())
+            self.__root_ui.protocol("WM_DELETE_WINDOW", self._safe_shutdown)
+
+            # Set canvas window ID
+            self.__root_ui.update_idletasks()
+            self.__player.set_xwindow(self.__canvas.winfo_id())
 
         self.__current_uid = ""
         self.__media_cache = {}
-        self.__uid_map = uid_map
-
-        # Set canvas window ID
-        self.__root_ui.update_idletasks()
-        self.__player.set_hwnd(self.__canvas.winfo_id())
         
         # Setup end of video event handling
         self.__event_manager = self.__player.event_manager()
@@ -460,14 +343,11 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
 
     def __on_video_end(self, event):
         """Handle end of video event"""
-        # if self.__current_uid:
-            # self.__root_ui.after(0, self.__restart_video)
-        self.__root_ui.after(0, self.show_home)
-        msg: Dict = {
-                StructMsg.CMD: StructMsg.FEEDBACK,
-                StructMsg.DATA: MediaState.STOPED
-            }
-        self.__mqtt_client.publisher(TOPIC_VIDEO_STT, msg)
+        # Schedule restart in main thread
+        if self.__export_display and self.__root_ui:
+            self.__root_ui.after(0, self.show_home)
+        else:
+            self.__current_uid = ""
 
     def __restart_video(self):
         """Restart the current video"""
@@ -488,13 +368,20 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
                 self.__player.stop()
                 # Release media player resources
                 self.__player.set_media(None)
-
+                gc.collect()
             except Exception as e:
                 Logger().error(f"[Tkinter] Error stopping player: {str(e)}")
             self.__current_uid = ""
-            
-        self.__canvas.place_forget()
-        self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+        
+        if self.__export_display and self.__canvas and self.__home_lbl:
+            self.__canvas.place_forget()
+            self.__home_lbl.place(x=0, y=0, relwidth=1, relheight=1)
+
+        msg: Dict = {
+                StructMsg.CMD: StructMsg.FEEDBACK,
+                StructMsg.DATA: MediaState.STOPED
+            }
+        self.__mqtt_client.publisher(TOPIC_VIDEO_STT, msg)
 
     def play_video(self, uid: str) -> None:
         """Play video for specified UID"""
@@ -509,11 +396,11 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
                 self.__current_uid = uid
                 
                 # Show video canvas
-                self.__home_lbl.place_forget()
-                self.__canvas.place(x=0, y=0, relwidth=1, relheight=1)
+                if self.__export_display and self.__home_lbl and self.__canvas:
+                    self.__home_lbl.place_forget()
+                    self.__canvas.place(x=0, y=0, relwidth=1, relheight=1)
                 
                 Logger().info(f"[Tkinter] Playing video for UID: {uid}")
-
                 msg: Dict = {
                     StructMsg.CMD: StructMsg.FEEDBACK,
                     StructMsg.DATA: MediaState.PLAYING
@@ -530,16 +417,15 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
         if not media:
             media = self.__vlc.media_new(self.__uid_map[uid])
             # Add media options for performance
-            media.add_option(":avcodec-hw=any")
-            media.add_option(":no-avcodec-dr")
-            media.add_option(":avcodec-skiploopfilter=all")
+            media.add_option(":avcodec-hw=v4l2m2m")
+            media.add_option(":avcodec-skiploopfilter=4")
             self.__media_cache[uid] = media
         return media
     
     def __attach_player_window(self):
         """Liên kết MediaPlayer mới với cửa sổ Tk."""
         self.__root_ui.update_idletasks()
-        self.__player.set_hwnd(self.__canvas.winfo_id())
+        self.__player.set_xwindow(self.__canvas.winfo_id())
 
     def __watch_player(self):
         """Kiểm tra định kỳ trạng thái VLC; khởi tạo lại nếu lỗi."""
@@ -553,28 +439,29 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
                 pass
             # tạo MediaPlayer mới rồi gắn vào cửa sổ
             self.__player = self.__vlc.media_player_new()
-            self.__attach_player_window()
-            self.__restart_video()        # phát lại video hiện tại / về màn hình home
+
+            if self.__export_display and self.__root_ui:
+                self.__attach_player_window()
+                self.__restart_video()        # phát lại video hiện tại / về màn hình home
 
         # gọi lại sau 5s
         self.run_loop_after_time(5000, self.__watch_player)
 
     
-    def __safe_shutdown(self, event = None) -> None:
+    def _safe_shutdown(self, event = None) -> None:
         """Safe shutdown procedure"""
         Logger().info("[Tkinter] Initiating safe shutdown")
         
         try:
             # Release VLC resources
-            if hasattr(self, 'player') and self.__player:
+            if self.__player:
                 self.__player.stop()
                 self.__player.release()
         except Exception as e:
             Logger().error(f"[Tkinter] Error releasing VLC: {str(e)}")
         
         try:
-            # Close serial connection
-            self.__serial_manager.close()
+            # Close connection
             self.__mqtt_client.disconnect()
         except Exception as e:
             Logger().error(f"[Tkinter] Error closing serial: {str(e)}")
@@ -586,6 +473,7 @@ class WindownsVLCMediaEngine(WindownsTkinterUI, MediaEngine):
         except tkinter.TclError:
             pass  # Window already destroyed
         
+        Logger().info("[App] Shutdown complete.")
         sys.exit(0)
 
 

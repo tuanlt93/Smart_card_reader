@@ -10,19 +10,6 @@ class Config(ABC):
     @abstractmethod
     def load_config(self) -> Dict[str, str]: ...
 
-class SerialPort(ABC):
-    @abstractmethod
-    def close(self) -> None: ...
-
-    @abstractmethod
-    def receive_datas(self) -> List: ...
-
-    @abstractmethod
-    def add_data_send(self, data: Dict) -> None: ...
-
-    @abstractmethod
-    def is_opened(self) -> bool: ...
-
 class MqttClient(ABC):
     @abstractmethod
     def is_connected(self) -> bool: ...

@@ -7,8 +7,8 @@ import platform
 import sys
 import json
 from utils.logger import Logger
-from constant import (BROKER, PORT, POLL_SERIAL_MS, POLL_REGISTER_SUB, MediaState, StructMsg,
-                      TOPIC_DEVICE, TOPIC_DEVICE_STT, EXPORT_DISPLAY,
+from constant import (BROKER, PORT, POLL_REGISTER_SUB, MediaState, StructMsg,
+                      EXPORT_DISPLAY, TOPIC_CHECK_INFO, TOPIC_INFO, CLIENT_ID,
                       TOPIC_VIDEO, TOPIC_VIDEO_STT)
 
 class RFIDVideoApp:
@@ -17,34 +17,23 @@ class RFIDVideoApp:
         self.__config = app_components.create_config()        # int
         self.__uid_map: Dict[str, str] = self.__config.load_config()  # {uid: filepath}
 
-        # 2) Serial + Media (theo Abstract Factory)
-        self.__serial = app_components.create_serial()
+        # 2)  Media (theo Abstract Factory)
         self.__mqtt_client = app_components.create_mqtt_client(BROKER, PORT)
-        self.__media  = app_components.create_media(self.__uid_map, self.__serial, self.__mqtt_client)
+        self.__media  = app_components.create_media(self.__uid_map, self.__mqtt_client)
 
         # 3) Trạng thái chống lặp
-        self.__last_cmd: str | None = None
 
         # 4) Vòng lặp đọc serial + UI loop
-        self.__run_poll_serial  = ""
         self.__run_register_sub = ""
 
-        self.__run_poll_serial = self.__media.run_loop_after_time(POLL_SERIAL_MS, self.__poll_serial)
         self.__run_register_sub = self.__media.run_loop_after_time(POLL_REGISTER_SUB, self.__register_topic_sub)
         self.__media.mainloop()
 
-    # Serial
-    def __poll_serial(self) -> None:
-        lines = self.__serial.receive_datas()
-        for item in lines:
-            item[StructMsg.CMD] = StructMsg.FEEDBACK
-            self.__mqtt_client.publisher(TOPIC_DEVICE_STT, item)
-        self.__run_poll_serial = self.__media.run_loop_after_time(POLL_SERIAL_MS, self.__poll_serial)
             
     # Xử lý lệnh từ pc server
     def __register_topic_sub(self):
         if self.__mqtt_client.is_connected():
-            self.__mqtt_client.subscriber(TOPIC_DEVICE, self.__handel_topic_device)
+            self.__mqtt_client.subscriber(TOPIC_CHECK_INFO, self.__handel_topic_check_info)
             if EXPORT_DISPLAY:
                 self.__mqtt_client.subscriber(TOPIC_VIDEO, self.__handel_topic_video)
             if self.__run_register_sub:
@@ -53,41 +42,27 @@ class RFIDVideoApp:
         else:
             self.__run_register_sub = self.__media.run_loop_after_time(POLL_REGISTER_SUB, self.__register_topic_sub)
 
-    def __handel_topic_device(self, msg: Dict) -> None:
+    def __handel_topic_check_info(self, msg: Dict) -> None:
         """
-        {
-            "cmd": "io",
-            "data": {
-                    "D1": 1,
-                }
-            }
-
-            "cmd": "io",
-            "data": {
-                    "D2": 0,
-                }
-            }
-
-            "cmd": "io",
-            "data": {
-                    "D3": 1
-                }
-            }
-             
-            "cmd": "reset"
-            "data": null
-
-            "cmd": "info"
-            "data": null
-
-            "cmd": "blink"
-            "data": {
-                    "io": "D1",
-                    "duration": 1000
+            msg = {
+                "cmd": "check_info",
+                "msg": {
+                    "type": "media"
                 }
             }
         """
-        self.__serial.add_data_send(msg)
+        
+        msg_rc = msg.get("msg")
+        if msg_rc.get("type") == "media":
+            print(msg)
+            info = {
+                "cmd": "info",
+                "msg": {
+                    "serial_number": CLIENT_ID,
+                    "data": self.__uid_map
+                }
+            }
+            self.__mqtt_client.publisher(TOPIC_INFO, info)
 
     def __handel_topic_video(self, msg: Dict) -> None:
         """{
@@ -112,7 +87,7 @@ def choose_factory() -> AppComponents:
         sys.exit(1)
 
 if __name__ == "__main__":
-    Logger(level='warn', to_screen=False, to_file=True)
+    # Logger(level='warn', to_screen=False, to_file=True)
     try:
         app_components = choose_factory()
         RFIDVideoApp(app_components)
