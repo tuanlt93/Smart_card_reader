@@ -54,15 +54,19 @@ class WindownsConfig(Config):
 # Concrete MQTT
 # ──────────────────────────────────────────────────────────────
 class WindownsMqttClient(Singleton, MqttClient):
-    def __init__(self, broker: str = "0.0.0.0", port: int = 1883):
+    def __init__(self, broker: str = "192.168.137.1", port: int = 1883):
         self.__broker = broker
         self.__port = port
         self.__client_id = f"media_{CLIENT_ID}"
+
+        # Danh sách lưu các topic đã đăng ký để tự động sub lại khi session bị mất hoặc broker reset
+        self.__subscribed_topics = {}
         
         # Initialize client with CallbackAPIVersion.VERSION2 (Required for paho-mqtt 2.0+)
         self.__client = mqtt.Client(
             callback_api_version=CallbackAPIVersion.VERSION2,
-            client_id=self.__client_id
+            client_id=self.__client_id,
+            clean_session=False
         )
         
         # Uncomment if authentication is required
@@ -77,30 +81,34 @@ class WindownsMqttClient(Singleton, MqttClient):
         self.__client.on_message = self.__on_default_message
         self.__client.on_subscribe = self.__on_subscribe
 
+        # Chỉ gọi loop_start MỘT LẦN DUY NHẤT
+        # Thư viện Paho sẽ tự động handle việc reconnect ngầm
+        self.__client.connect_async(self.__broker, self.__port, keepalive=10)
+        self.__client.loop_start()
+
         # Start background maintenance thread
         self.__maintain_thread = threading.Thread(target=self.__maintain_loop, daemon=True)
         self.__maintain_thread.start()
 
     def __maintain_loop(self) -> None:
-        """Background loop for automatic reconnection and loop management"""
         while self.__running:
             if not self.is_connected():
-                try:
-                    Logger().info(f"[MQTT] Connecting to MQTT Broker: {self.__broker}:{self.__port}...")
-                    # Connect and start the network loop
-                    self.__client.connect(self.__broker, self.__port, keepalive=60)
-                    self.__client.loop_start()
-                except Exception as e:
-                    Logger().error(f"[MQTT] Connection failed: {e}. Retrying in 2s...")
-                    continue
-            
-            time.sleep(2)
+                Logger().warning("[MQTT] System is offline. Paho is attempting to reconnect...")
+            time.sleep(5)
 
     def __on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
-            Logger().info("[MQTT] Broker connected successfully")
+            # session_present là kiểu boolean (True/False)
+            session_present = flags.session_present
+            Logger().info(f"[MQTT] Connected. Session present: {session_present}")
+            
+            # Re-subscribe để đảm bảo dữ liệu luôn được nhận kể cả khi Broker bị mất dữ liệu session
+            for topic, qos in self.__subscribed_topics.items():
+                self.__client.subscribe(topic, qos=qos)
+                if not session_present:
+                    Logger().info(f"[MQTT] New session created: Subscribing to {topic}")
         else:
-            Logger().error(f"[MQTT] connection error, reason code: {reason_code}")
+            Logger().error(f"[MQTT] Connection error with reason code: {reason_code}")
 
     def __on_disconnect(self, client, userdata, flags, reason_code, properties):
         Logger().warning(f"[MQTT] Disconnected from MQTT Broker, reason code: {reason_code}")
@@ -147,6 +155,7 @@ class WindownsMqttClient(Singleton, MqttClient):
         Subscribe to a topic with a custom callback supporting args and kwargs.
         Automatically handles message filtering via Paho's message_callback_add.
         """
+        self.__subscribed_topics[topic] = 0
         if callback:
             def message_wrapper(client, userdata, msg):
                 try:
