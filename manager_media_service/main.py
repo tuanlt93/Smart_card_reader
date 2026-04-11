@@ -33,9 +33,9 @@ class RFIDVideoApp:
     # Xử lý lệnh từ pc server
     def __register_topic_sub(self):
         if self.__mqtt_client.is_connected():
-            self.__mqtt_client.subscriber(TOPIC_CHECK_INFO, self.__handel_topic_check_info)
+            self.__mqtt_client.subscriber(TOPIC_CHECK_INFO, 1, self.__handel_topic_check_info)
             if EXPORT_DISPLAY:
-                self.__mqtt_client.subscriber(TOPIC_VIDEO, self.__handel_topic_video)
+                self.__mqtt_client.subscriber(TOPIC_VIDEO, 1, self.__handel_topic_video)
             if self.__run_register_sub:
                 self.__media.cancel_run_loop_after_time(self.__run_register_sub)
                 self.__run_register_sub = ""
@@ -54,7 +54,7 @@ class RFIDVideoApp:
         
         msg_rc = msg.get("msg")
         if msg_rc.get("type") == "media":
-            print(msg)
+            # print(msg)
             info = {
                 "cmd": "info",
                 "msg": {
@@ -62,7 +62,7 @@ class RFIDVideoApp:
                     "data": self.__uid_map
                 }
             }
-            self.__mqtt_client.publisher(TOPIC_INFO, info)
+            self.__mqtt_client.publisher(TOPIC_INFO, info, 1)
 
     def __handel_topic_video(self, msg: Dict) -> None:
         """{

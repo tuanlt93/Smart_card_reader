@@ -307,7 +307,7 @@ class LinuxMqttClient(Singleton, MqttClient):
             Logger().warning(f"[MQTT] not connected, cannot publish to {topic}")
         return False
 
-    def subscriber(self, topic: str, qos: int = 0, callback: Callable):
+    def subscriber(self, topic: str, qos: int = 0, callback: Callable = None):
         """
         Subscribe to a topic with a custom callback supporting args and kwargs.
         Automatically handles message filtering via Paho's message_callback_add.

@@ -121,7 +121,7 @@ class RFIDVideoApp:
                 }
             }
         """
-        print(msg)
+        # print(msg)
         msg_rc = msg.get("msg")
         if msg_rc.get("type") == "serial":
             self.__serial.add_data_send({"cmd":"info","data":None})
