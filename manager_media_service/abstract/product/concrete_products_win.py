@@ -127,7 +127,7 @@ class WindownsMqttClient(Singleton, MqttClient):
     def is_connected(self) -> bool:
         return self.__client.is_connected()
 
-    def publisher(self, topic: str, payload: Dict, retain: bool = False):
+    def publisher(self, topic: str, payload: Dict, qos: int = 0, retain: bool = False):
         """Publish data to Broker, automatically handles JSON objects"""
         if self.is_connected():
             try:
@@ -137,7 +137,7 @@ class WindownsMqttClient(Singleton, MqttClient):
                 else:
                     final_payload = str(payload)
 
-                result = self.__client.publish(topic, final_payload, qos=0, retain=retain)
+                result = self.__client.publish(topic, final_payload, qos=qos, retain=retain)
                 
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
                     Logger().info(f"[MQTT] Published to '{topic}': {final_payload}")
@@ -150,12 +150,12 @@ class WindownsMqttClient(Singleton, MqttClient):
             Logger().warning(f"[MQTT] not connected, cannot publish to {topic}")
         return False
 
-    def subscriber(self, topic: str, callback: Callable):
+    def subscriber(self, topic: str, qos: int = 0, callback: Callable):
         """
         Subscribe to a topic with a custom callback supporting args and kwargs.
         Automatically handles message filtering via Paho's message_callback_add.
         """
-        self.__subscribed_topics[topic] = 0
+        self.__subscribed_topics[topic] = qos
         if callback:
             def message_wrapper(client, userdata, msg):
                 try:
@@ -179,7 +179,7 @@ class WindownsMqttClient(Singleton, MqttClient):
             self.__client.message_callback_add(topic, message_wrapper)
         
         # Execute subscription
-        self.__client.subscribe(topic, qos = 0)
+        self.__client.subscribe(topic, qos = qos)
         
         if self.is_connected():
             Logger().info(f"[MQTT] Subscription request sent for: {topic}")

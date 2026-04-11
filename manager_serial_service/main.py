@@ -48,7 +48,7 @@ class RFIDVideoApp:
                             "data": item.get("data")
                         }
                     }
-                    self.__mqtt_client.publisher(TOPIC_INFO, info)
+                    self.__mqtt_client.publisher(TOPIC_INFO, info, 1)
 
             time.sleep(POLL_SERIAL)
             
@@ -57,8 +57,8 @@ class RFIDVideoApp:
         while not self.__is_registered:
             if self.__mqtt_client.is_connected():
                 
-                self.__mqtt_client.subscriber(TOPIC_CHECK_INFO, self.__handel_topic_check_info)
-                self.__mqtt_client.subscriber(TOPIC_DEVICE, self.__handel_topic_device)
+                self.__mqtt_client.subscriber(TOPIC_CHECK_INFO, 1, self.__handel_topic_check_info)
+                self.__mqtt_client.subscriber(TOPIC_DEVICE, 1, self.__handel_topic_device)
                 self.__is_registered = True
 
             time.sleep(POLL_REGISTER_SUB)
